@@ -269,7 +269,7 @@ const results = await parallel(groups.map((g) => () =>
   agent(readerPrompt(g.files, allFiles), { label: g.label, phase: 'Scan', schema: READER_SCHEMA, model: 'sonnet', agentType: READ_ONLY_AGENT })))
 const findings = []
 const failed = []
-groups.forEach((g, i) => findings.push({ group: g.label, files: g.files, ...(results[i] || {}) }))
+groups.forEach((g, i) => (results[i] ? findings.push({ group: g.label, files: g.files, ...results[i] }) : failed.push(g)))
 if (!findings.length) throw new Error(`Every reader agent failed (${groups.length}). Refusing to produce an audit over nothing.`)
 if (failed.length) log(`${failed.length} reader agent(s) failed; their files are reported as NOT AUDITED: ${failed.map((g) => g.label).join(', ')}`)
 
