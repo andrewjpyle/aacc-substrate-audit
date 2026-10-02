@@ -198,3 +198,19 @@ test('the report shows project files relative to the root and the home dir as ~'
   assert.deepEqual(result.top_actions, ['edit docs/x.md']);
   assert.doesNotMatch(result.report_markdown, /\/srv\/acme\//);
 });
+
+test('dead-ref check: memory links resolve in the memory dir and non-path tokens are skipped', async () => {
+  const files = [`${MEM}/MEMORY.md`, `${MEM}/feedback_a.md`];
+  const reader = { referenced_paths: ['feedback_a.md', 'feedback-missing.md', 'BILLING_V2_DUAL_WRITE', 'docs/runbooks/x.md', '~/notes', 'tasks/*.md'],
+    contradictions: [], stale_candidates: [], copy_not_pointer: [], bloat_candidates: [] };
+  const respond = (l) => (l === 'manifest' ? happy({ memory_files: files })(l) : l.startsWith('mem-') || l === 'claude+docs' || l === 'tasks' ? reader : happy()(l));
+  const { calls, result } = await runWorkflow(undefined, respond);
+  const checked = calls.find((c) => c.opts.label === 'dead-refs').prompt.split('PATHS:\n')[1].split('\n').map((l) => l.slice(2));
+  assert.deepEqual(checked.sort(), ['docs/runbooks/x.md', 'feedback-missing.md', 'tasks/*.md', '~/notes'].sort());
+  assert.match(result.coverage.deadref, /1 memory links resolved in the memory dir/);
+});
+
+test('the synthesizer is told not to write its own coverage section', async () => {
+  const { calls } = await runWorkflow(undefined, happy());
+  assert.match(synthPrompt(calls), /do NOT write a coverage section/);
+});

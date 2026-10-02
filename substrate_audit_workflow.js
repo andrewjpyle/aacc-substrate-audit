@@ -100,6 +100,12 @@ function chunk(arr, n) {
   return out
 }
 
+// A referenced "path" worth checking on disk: it has a slash, ~ or glob, or ends in a file extension.
+// Bare tokens like a feature-flag name are not paths.
+function looksLikePath(p) {
+  return /[\/~*]/.test(p) || /\.[A-Za-z0-9]{1,8}$/.test(p)
+}
+
 function list(v) {
   return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x) : []
 }
@@ -159,6 +165,8 @@ function synthPrompt(findings, dead, coverageNotes) {
     'DEAD REFERENCES (JSON, or null if the check did not run):',
     JSON.stringify(dead),
     '',
+    'The script puts its own Coverage section at the top of the report: do NOT write a coverage section, do NOT',
+    'restate file counts, and do NOT repeat that nothing was edited.',
     'Write project files relative to the project root and the home directory as ~.',
     'Return via schema. `report_markdown` must be a complete report with these sections (say "none found" where',
     'empty, and "not checked" where coverage says a check did not run): Summary · Dead references to fix ·',
@@ -265,8 +273,15 @@ groups.forEach((g, i) => (results[i] ? findings.push({ group: g.label, files: g.
 if (!findings.length) throw new Error(`Every reader agent failed (${groups.length}). Refusing to produce an audit over nothing.`)
 if (failed.length) log(`${failed.length} reader agent(s) failed; their files are reported as NOT AUDITED: ${failed.map((g) => g.label).join(', ')}`)
 
-const uniqRefs = Array.from(new Set(findings.flatMap((s) => list(s.referenced_paths))))
-log(`Scanned ${findings.length}/${groups.length} groups; ${uniqRefs.length} unique referenced paths to verify`)
+const allRefs = Array.from(new Set(findings.flatMap((s) => list(s.referenced_paths).map((p) => p.trim())).filter(Boolean)))
+// Settle what the script already knows, so the checker cannot get it wrong: a bare file name that
+// matches a memory file is a link inside the memory dir (MEMORY.md links are written that way), and
+// a token that is not path-shaped is not a path at all.
+const memNames = new Set(memFiles.map((f) => f.slice(f.lastIndexOf('/') + 1)))
+const inMemory = allRefs.filter((p) => !p.includes('/') && memNames.has(p))
+const notPaths = allRefs.filter((p) => !memNames.has(p) && !looksLikePath(p))
+const uniqRefs = allRefs.filter((p) => !inMemory.includes(p) && !notPaths.includes(p))
+log(`Scanned ${findings.length}/${groups.length} groups; ${uniqRefs.length} referenced paths to verify (${inMemory.length} memory links resolved, ${notPaths.length} non-path tokens skipped)`)
 
 phase('Verify refs')
 let dead = { dead: [] }
@@ -274,6 +289,7 @@ let deadStatus = 'no referenced paths to check'
 if (uniqRefs.length) {
   dead = await agent(deadRefPrompt(uniqRefs, memDir), { label: 'dead-refs', schema: DEADREF_SCHEMA, model: 'haiku', agentType: READ_ONLY_AGENT })
   deadStatus = dead ? `checked ${uniqRefs.length} paths, ${list((dead.dead || []).map((d) => d && d.path)).length} dead` : `FAILED; ${uniqRefs.length} paths NOT checked`
+  if (inMemory.length) deadStatus += `; ${inMemory.length} memory links resolved in the memory dir`
   if (!dead) log('The dead-reference agent failed; dead references are NOT checked (reported as such)')
 }
 
