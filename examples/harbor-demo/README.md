@@ -18,6 +18,12 @@ Claude Code memory in `memory/`.
 `audits/substrate_audit_2026-10-01.md` is the **unedited** report from a real run of
 `substrate_audit_workflow.js` on this demo. The README's graphics are rendered from it.
 
+`audits/before_fix/substrate_audit_2026-10-01.md` is the unedited report from the first run, one
+commit earlier (91330f5). Its dead-reference check flagged 8 paths; 7 were false positives (six
+`MEMORY.md` links and a feature-flag name). That run is why the script now settles memory links
+itself before the check. It also shows the synthesizer writing a second coverage paragraph with a
+wrong file count, which is why the coverage block is now script-only.
+
 ## Reproduce it
 
 1. Copy this folder except `memory/` and `audits/` to a new directory and `cd` there. Run `git init`
